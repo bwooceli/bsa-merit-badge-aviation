@@ -3,6 +3,7 @@
 Outputs:
 - slides/session-1.pptx
 - slides/session-2.pptx
+- slides/session-2-req-5.pptx
 
 This script intentionally uses concise, class-facing bullets and puts extra detail
 into speaker notes for the instructor.
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Iterable, List, Optional
 
 from pptx import Presentation
@@ -23,6 +25,8 @@ from pptx.util import Inches, Pt
 
 ROOT = Path(__file__).resolve().parents[1]
 SLIDES_DIR = ROOT / "slides"
+INSTRUCTOR_NOTES_DIR = ROOT / "instructor-notes"
+SESSION_2_REQ_5_SOURCE = INSTRUCTOR_NOTES_DIR / "instructor-guide-session-2-requirement-5.md"
 
 
 @dataclass(frozen=True)
@@ -75,6 +79,61 @@ def _add_quick_activity_slide(prs: Presentation, title: str, steps: Iterable[str
             notes=notes,
         ),
     )
+
+
+def _read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _extract_markdown_section(markdown: str, heading_text: str) -> str:
+    """Return the markdown content under the first matching heading.
+
+    Matches headings like "## Outcomes" or "### 0:03–0:15 – Pilot certificates".
+    The returned content ends at the next heading of the same or higher level.
+    """
+
+    heading_pattern = re.compile(r"^(#{1,6})\\s+(.*)\\s*$")
+    lines = markdown.splitlines()
+
+    target_idx: Optional[int] = None
+    target_level: Optional[int] = None
+
+    for idx, line in enumerate(lines):
+        match = heading_pattern.match(line)
+        if not match:
+            continue
+        level = len(match.group(1))
+        title = match.group(2).strip()
+        if title == heading_text.strip():
+            target_idx = idx
+            target_level = level
+            break
+
+    if target_idx is None or target_level is None:
+        return ""
+
+    start = target_idx + 1
+    end = len(lines)
+    for idx in range(start, len(lines)):
+        match = heading_pattern.match(lines[idx])
+        if not match:
+            continue
+        level = len(match.group(1))
+        if level <= target_level:
+            end = idx
+            break
+
+    section = "\n".join(lines[start:end]).strip()
+    return section
+
+
+def _notes_from_sections(markdown: str, headings: List[str]) -> str:
+    parts: List[str] = []
+    for heading in headings:
+        content = _extract_markdown_section(markdown, heading)
+        if content:
+            parts.append(f"[{heading}]\n{content}")
+    return "\n\n".join(parts).strip() or None
 
 
 def build_session_1() -> Presentation:
@@ -340,6 +399,156 @@ def build_session_2() -> Presentation:
     return prs
 
 
+def build_session_2_requirement_5() -> Presentation:
+    """Build an in-class, non-drone deck for Requirement 5.
+
+    Source of truth: instructor guide markdown in instructor-notes.
+    Bullets are intentionally concise; the relevant instructor-guide sections are
+    attached as speaker notes so you can teach directly from that document.
+    """
+
+    prs = Presentation()
+
+    source_md = _read_text(SESSION_2_REQ_5_SOURCE) if SESSION_2_REQ_5_SOURCE.exists() else ""
+
+    _add_title_slide(
+        prs,
+        title="Aviation Merit Badge – Session 2 (Requirement 5)",
+        subtitle="Personal & Professional Aviation Opportunities • classroom module",
+    )
+
+    slides: List[SlideSpec] = [
+        SlideSpec(
+            title="Today’s outcomes",
+            bullets=[
+                "Explain key certificates/ratings in plain language",
+                "Name at least one local youth aviation organization",
+                "Identify 3 aviation careers; start researching 1",
+            ],
+            notes=_notes_from_sections(source_md, ["Outcomes"]),
+        ),
+        SlideSpec(
+            title="Ground rules",
+            bullets=[
+                "Plain language (no legal fine print)",
+                "Rules change — verify current FAA/AOPA details",
+                "This is an overview, not flight training",
+            ],
+            notes=_notes_from_sections(source_md, ["Ground rules (keep it accurate and scout-friendly)"]),
+        ),
+        SlideSpec(
+            title="Choose the version (time check)",
+            bullets=[
+                "10 min: TRUST vs Part 107 + 1 pilot pathway",
+                "30 min: cover all + start careers research",
+                "45 min: add activities + quick verbal check-offs",
+            ],
+            notes=_notes_from_sections(source_md, ["Choose the version that fits your time", "Suggested pacing"]),
+        ),
+        SlideSpec(
+            title="Credential roadmap (big picture)",
+            bullets=[
+                "Airplane pilot path: Student → Private → Instrument → Commercial → ATP",
+                "Instructor path: add CFI",
+                "Drone path: TRUST (recreational) vs Part 107 Remote Pilot (work)",
+            ],
+            notes=_notes_from_sections(source_md, ["Activity A – Pathway ladder (3–5 min)"]),
+        ),
+        SlideSpec(
+            title="TRUST vs Remote Pilot (Part 107)",
+            bullets=[
+                "TRUST: recreational safety knowledge (required for many hobby flights)",
+                "Part 107: common certificate for non-recreational drone operations",
+                "Key idea: safety + judgment apply either way",
+            ],
+            notes=_notes_from_sections(source_md, ["Remote pilot certificate (drone / Part 107)"]),
+        ),
+        SlideSpec(
+            title="Pilot certificates (Part 61) — what they allow",
+            bullets=[
+                "Student: train with an instructor; first solo with sign-off",
+                "Recreational: less common; more limits than private",
+                "Private: most common personal flying certificate",
+            ],
+            notes=_notes_from_sections(
+                source_md,
+                [
+                    "0:03–0:15 – Pilot certificates (Part 61) and what they allow",
+                ],
+            ),
+        ),
+        SlideSpec(
+            title="Instrument rating — why it matters",
+            bullets=[
+                "Fly using instruments + procedures when you can’t rely on outside references",
+                "Improves discipline, workload management, and weather decision-making",
+                "Instrument is a rating (not a separate certificate)",
+            ],
+            notes=_notes_from_sections(source_md, ["0:15–0:20 – Instrument rating (why it matters)"]),
+        ),
+        SlideSpec(
+            title="Professional certificates",
+            bullets=[
+                "Commercial: allows certain paid flying jobs (with more requirements)",
+                "ATP: top rung for airline captain and many airline roles",
+                "CFI: authorized to teach + sign training logs",
+            ],
+            notes=_notes_from_sections(source_md, ["0:20–0:28 – Professional certificates"]),
+        ),
+        SlideSpec(
+            title="Youth opportunities (local)",
+            bullets=[
+                "Aviation Exploring Post: learn skills, visit facilities, meet mentors",
+                "Civil Air Patrol (CAP): aerospace education + leadership",
+                "Action: write 1 org to check + what you hope to do",
+            ],
+            notes=_notes_from_sections(source_md, ["0:28–0:33 – Youth organizations (local opportunities)"]),
+        ),
+        SlideSpec(
+            title="Careers: choose 3, research 1",
+            bullets=[
+                "List 3 careers (pilot, mechanic, controller, engineer, dispatcher, airport ops, drone operator)",
+                "Pick 1 and research: training, certs, experience, costs",
+                "Also research: job outlook, salary range, advancement",
+            ],
+            notes=_notes_from_sections(source_md, ["0:33–0:45 – Careers: choose 3, research 1"]),
+        ),
+        SlideSpec(
+            title="Quick activity: match credential to scenario",
+            bullets=[
+                "Learn + fly solo someday → Student",
+                "Fly family for fun → Private",
+                "Fly in clouds using procedures → Instrument rating",
+                "Fly a drone for a business → Part 107 Remote Pilot",
+            ],
+            notes=_notes_from_sections(source_md, ["Activity B – Match the credential to the scenario (3–6 min)"]),
+        ),
+        SlideSpec(
+            title="Quick check-offs (fast sign-off)",
+            bullets=[
+                "Each scout answers 1–2 items in one sentence",
+                "Rotate prompts so it stays quick",
+                "Use the handout as the record",
+            ],
+            notes=_notes_from_sections(source_md, ["Activity C – One-sentence check-offs (5–10 min)", "Counselor sign-off guidance (simple)"]),
+        ),
+        SlideSpec(
+            title="Wrap-up + next steps",
+            bullets=[
+                "Finish the Requirement 5 handout (if not done)",
+                "Bring 2–3 questions for counselor discussion",
+                "Optional follow-ups: airport/tower/facility visit",
+            ],
+            notes=_notes_from_sections(source_md, ["Counselor sign-off guidance (simple)"]),
+        ),
+    ]
+
+    for spec in slides:
+        _add_title_and_bullets(prs, spec)
+
+    return prs
+
+
 def main() -> None:
     SLIDES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -351,8 +560,13 @@ def main() -> None:
     session_2_path = SLIDES_DIR / "session-2.pptx"
     session_2.save(session_2_path.as_posix())
 
+    session_2_req_5 = build_session_2_requirement_5()
+    session_2_req_5_path = SLIDES_DIR / "session-2-req-5.pptx"
+    session_2_req_5.save(session_2_req_5_path.as_posix())
+
     print(f"Wrote {session_1_path.relative_to(ROOT)}")
     print(f"Wrote {session_2_path.relative_to(ROOT)}")
+    print(f"Wrote {session_2_req_5_path.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

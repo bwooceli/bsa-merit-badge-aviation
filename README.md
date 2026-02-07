@@ -42,6 +42,7 @@ Generated decks:
 
 - `slides/session-1.pptx`
 - `slides/session-2.pptx`
+- `slides/session-2-req-5.pptx` (Requirement 5 classroom module; no drone flight)
 
 To regenerate the slide decks:
 
